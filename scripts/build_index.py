@@ -26,8 +26,11 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from scripts.lib.db import connect
-from scripts.lib.paths import DATA_DIR
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.db import connect  # noqa: E402
+from scripts.lib.paths import DATA_DIR  # noqa: E402
 
 SNAPSHOT_PATH: Path = DATA_DIR / "index_snapshot.json"
 

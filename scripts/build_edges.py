@@ -39,8 +39,12 @@ import sys
 import time
 from collections import defaultdict
 from collections.abc import Iterable
+from pathlib import Path
 
-from scripts.lib.db import connect, transaction
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.db import connect, transaction  # noqa: E402
 
 # --------------------------------------------------------------------------- #
 # Constants
