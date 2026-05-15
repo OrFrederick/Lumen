@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Data (managed by pipeline, not tracked)
+data/library.db
+data/library.db-*
+data/transcripts/
+data/extracted/
+data/enriched/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
