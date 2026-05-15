@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body {
+  background: theme('colors.paper');
+  color: theme('colors.ink');
+}
+
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    background: #0b0d12;
+    color: #e7e7df;
+  }
+}
+
+mark {
+  background: rgba(250, 204, 21, 0.35);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+/* Timeline chrome */
+.timeline-axis text {
+  font-size: 10px;
+  fill: currentColor;
+  opacity: 0.6;
+}
+.timeline-axis line,
+.timeline-axis path {
+  stroke: currentColor;
+  opacity: 0.15;
+}
