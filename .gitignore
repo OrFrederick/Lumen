@@ -13,6 +13,8 @@ data/library.db-*
 data/transcripts/
 data/extracted/
 data/enriched/
+data/cache/
+data/index_snapshot.json
 
 # Node / Next.js
 node_modules/

@@ -11,6 +11,9 @@ import type {
   Video,
 } from "./types";
 
+export type StoryWithVideoMeta = StoryWithVideo & { video_channel: string | null };
+export type PersonHit = Pick<Entity, "id" | "name" | "slug" | "birth_year" | "death_year" | "occupation" | "description">;
+
 // Read-only helpers. All gracefully degrade to empty results when the
 // database is missing or a virtual table is unavailable.
 
@@ -223,4 +226,158 @@ export function timelineData(): TimelineData {
 export function storyCount(): number {
   const row = safeGet<{ n: number }>(`SELECT COUNT(*) AS n FROM stories`);
   return row?.n ?? 0;
+}
+
+export function personCount(): number {
+  const row = safeGet<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM entities WHERE kind = 'person'`,
+  );
+  return row?.n ?? 0;
+}
+
+export function videoCount(): number {
+  const row = safeGet<{ n: number }>(`SELECT COUNT(*) AS n FROM videos`);
+  return row?.n ?? 0;
+}
+
+export function entityCount(): number {
+  const row = safeGet<{ n: number }>(`SELECT COUNT(*) AS n FROM entities`);
+  return row?.n ?? 0;
+}
+
+export function allStoriesWithVideo(): StoryWithVideoMeta[] {
+  return safeAll<StoryWithVideoMeta>(
+    `SELECT s.id, s.video_id, s.ts_start, s.ts_end, s.kind, s.title, s.body,
+            s.significance, s.historical_year, s.historical_place, s.takeaway,
+            v.title AS video_title, v.channel AS video_channel,
+            v.published_at AS video_published_at
+       FROM stories s LEFT JOIN videos v ON v.id = s.video_id
+       ORDER BY s.historical_year ASC NULLS LAST, s.id ASC`,
+  );
+}
+
+export function getStoryWithVideoMeta(id: number): StoryWithVideoMeta | null {
+  return safeGet<StoryWithVideoMeta>(
+    `SELECT s.id, s.video_id, s.ts_start, s.ts_end, s.kind, s.title, s.body,
+            s.significance, s.historical_year, s.historical_place, s.takeaway,
+            v.title AS video_title, v.channel AS video_channel,
+            v.published_at AS video_published_at
+       FROM stories s LEFT JOIN videos v ON v.id = s.video_id
+       WHERE s.id = ?`,
+    [id],
+  );
+}
+
+export function featuredStories(n = 3): StoryWithVideoMeta[] {
+  // Featured = random sample biased toward stories that have a historical_year
+  // and a takeaway. Cheap heuristic: order by id*prime then limit.
+  return safeAll<StoryWithVideoMeta>(
+    `SELECT s.id, s.video_id, s.ts_start, s.ts_end, s.kind, s.title, s.body,
+            s.significance, s.historical_year, s.historical_place, s.takeaway,
+            v.title AS video_title, v.channel AS video_channel,
+            v.published_at AS video_published_at
+       FROM stories s LEFT JOIN videos v ON v.id = s.video_id
+       WHERE s.takeaway IS NOT NULL AND length(s.takeaway) > 20
+       ORDER BY ((s.id * 2654435761) % 100000) ASC
+       LIMIT ?`,
+    [n],
+  );
+}
+
+export function allVideos(): Video[] {
+  return safeAll<Video>(
+    `SELECT id, title, channel, channel_handle, published_at, duration_sec,
+            url, thumbnail_url, description, field
+       FROM videos ORDER BY published_at DESC NULLS LAST`,
+  );
+}
+
+/** People (entities of kind=person) for the timeline lifespans. */
+export function getTimelinePeople(): PersonHit[] {
+  return safeAll<PersonHit>(
+    `SELECT id, name, slug, birth_year, death_year, occupation, description
+       FROM entities
+      WHERE kind = 'person' AND birth_year IS NOT NULL AND death_year IS NOT NULL
+      ORDER BY birth_year ASC`,
+  );
+}
+
+/** Year histogram for the density ridge — stories with historical_year. */
+export function getStoryYearHistogram(): Array<{ year: number; count: number }> {
+  return safeAll<{ year: number; count: number }>(
+    `SELECT historical_year AS year, COUNT(*) AS count
+       FROM stories
+      WHERE historical_year IS NOT NULL
+      GROUP BY historical_year
+      ORDER BY year ASC`,
+  );
+}
+
+/** Lightweight story pins for the timeline. */
+export interface TimelinePin {
+  id: number;
+  title: string | null;
+  takeaway: string | null;
+  kind: Story["kind"];
+  year: number;
+  video_id: string;
+}
+
+export function getTimelinePins(): TimelinePin[] {
+  return safeAll<TimelinePin>(
+    `SELECT id, title, takeaway, kind, historical_year AS year, video_id
+       FROM stories
+      WHERE historical_year IS NOT NULL
+      ORDER BY year ASC`,
+  );
+}
+
+/** Stories sharing >=1 entity with the given story, excluding self. */
+export function getRelatedStoriesByEntity(storyId: number, limit = 3): StoryWithVideoMeta[] {
+  return safeAll<StoryWithVideoMeta>(
+    `SELECT s.id, s.video_id, s.ts_start, s.ts_end, s.kind, s.title, s.body,
+            s.significance, s.historical_year, s.historical_place, s.takeaway,
+            v.title AS video_title, v.channel AS video_channel,
+            v.published_at AS video_published_at,
+            COUNT(*) AS shared
+       FROM stories s
+       LEFT JOIN videos v ON v.id = s.video_id
+       JOIN entity_mentions m1 ON m1.story_id = s.id
+       JOIN entity_mentions m2 ON m2.entity_id = m1.entity_id AND m2.story_id = ?
+      WHERE s.id != ?
+      GROUP BY s.id
+      ORDER BY shared DESC, s.id DESC
+      LIMIT ?`,
+    [storyId, storyId, limit],
+  );
+}
+
+/** All stories for a person (by entity slug), grouped client-side by video. */
+export function getStoriesForPerson(slug: string): StoryWithVideoMeta[] {
+  return safeAll<StoryWithVideoMeta>(
+    `SELECT s.id, s.video_id, s.ts_start, s.ts_end, s.kind, s.title, s.body,
+            s.significance, s.historical_year, s.historical_place, s.takeaway,
+            v.title AS video_title, v.channel AS video_channel,
+            v.published_at AS video_published_at
+       FROM stories s
+       LEFT JOIN videos v ON v.id = s.video_id
+       JOIN entity_mentions m ON m.story_id = s.id
+       JOIN entities e ON e.id = m.entity_id
+      WHERE e.slug = ?
+      ORDER BY s.historical_year ASC NULLS LAST, v.published_at ASC NULLS LAST`,
+    [slug],
+  );
+}
+
+/** People search by name prefix (for header search). */
+export function searchPeople(q: string, limit = 6): PersonHit[] {
+  if (!q.trim()) return [];
+  return safeAll<PersonHit>(
+    `SELECT id, name, slug, birth_year, death_year, occupation, description
+       FROM entities
+      WHERE kind = 'person' AND name LIKE ?
+      ORDER BY length(name) ASC
+      LIMIT ?`,
+    [`%${q}%`, limit],
+  );
 }

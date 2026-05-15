@@ -1,21 +1,27 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  content: [
-    "./app/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-  ],
+  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  darkMode: ["selector", '[data-theme="dark"]'],
   theme: {
     extend: {
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', 'sans-serif'],
-        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+        serif: ["var(--serif)"],
+        sans: ["var(--sans)"],
+        mono: ["var(--mono)"],
       },
       colors: {
-        ink: '#0f1115',
-        paper: '#f7f6f1',
-        muted: '#6b6e76',
-        accent: '#2563eb',
+        bg: "var(--bg)",
+        "bg-elev": "var(--bg-elev)",
+        paper: "var(--paper)",
+        ink: "var(--ink)",
+        "ink-soft": "var(--ink-soft)",
+        "ink-mute": "var(--ink-mute)",
+        rule: "var(--rule)",
+        "rule-soft": "var(--rule-soft)",
+        accent: "var(--accent)",
+        "accent-soft": "var(--accent-soft)",
+        "accent-wash": "var(--accent-wash)",
       },
     },
   },

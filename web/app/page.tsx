@@ -1,53 +1,158 @@
-import Timeline from "@/components/Timeline";
-import StoryCard from "@/components/StoryCard";
-import SearchBar from "@/components/SearchBar";
-import { recentStories, storyCount, timelineData } from "@/lib/queries";
+import { HomeBody } from "@/components/HomeBody";
+import { StoryCard } from "@/components/StoryCard";
+import { Timeline, type TimelinePersonInput, type TimelinePinInput } from "@/components/Timeline";
+import {
+  allStoriesWithVideo,
+  allVideos,
+  featuredStories,
+  getStoryEntities,
+  getTimelinePeople,
+  getTimelinePins,
+  personCount,
+  storyCount,
+  videoCount,
+} from "@/lib/queries";
+import {
+  inferField,
+  shortName,
+  toStoryView,
+  toEntityView,
+  type EntityView,
+  type Field,
+} from "@/lib/view";
+import type { Entity } from "@/lib/types";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default function HomePage() {
-  const data = timelineData();
-  const feed = recentStories(12);
-  const total = storyCount();
+  const people = getTimelinePeople();
+  const pinsRaw = getTimelinePins();
+  const stories = allStoriesWithVideo();
+  const featured = featuredStories(3);
+  const videos = allVideos();
+  const totalStories = storyCount();
+  const totalPeople = personCount();
+  const totalVideos = videoCount();
+
+  const timelinePeople: TimelinePersonInput[] = people
+    .filter((p): p is typeof p & { birth_year: number; death_year: number } =>
+      p.birth_year != null && p.death_year != null,
+    )
+    .map((p) => ({
+      id: p.id,
+      slug: p.slug ?? `e${p.id}`,
+      name: p.name,
+      short: shortName({ name: p.name, kind: "person" }),
+      birth_year: p.birth_year,
+      death_year: p.death_year,
+      occupation: p.occupation,
+      description: p.description,
+      field: inferField(p.occupation),
+    }));
+
+  const timelinePins: TimelinePinInput[] = pinsRaw.map((p) => ({
+    id: p.id,
+    title: p.title ?? "Untitled",
+    takeaway: p.takeaway,
+    kind: p.kind,
+    year: p.year,
+    field: null,
+  }));
+
+  // Hydrate each story's entities + derived field list once on the server,
+  // then ship the bundle to the client component for filtering.
+  const records = stories.map((s) => {
+    const ents = getStoryEntities(s.id);
+    const entityViews: EntityView[] = ents.map((e) =>
+      toEntityView(e as unknown as Entity),
+    );
+    const fields = Array.from(
+      new Set<Field>(entityViews.map((e) => e.field)),
+    );
+    return {
+      story: toStoryView(s),
+      entities: entityViews,
+      fields,
+    };
+  });
+
+  const featuredRecords = featured.map((s) => {
+    const ents = getStoryEntities(s.id);
+    return {
+      story: toStoryView(s),
+      entities: ents.map((e) => toEntityView(e as unknown as Entity)),
+    };
+  });
+
+  const videoList = videos.map((v) => ({
+    id: v.id,
+    title: v.title ?? `Video ${v.id}`,
+  }));
+
+  const earliestBirth = timelinePeople.length
+    ? Math.min(...timelinePeople.map((p) => p.birth_year))
+    : 1700;
+  const earliestPin = timelinePins.length
+    ? Math.min(...timelinePins.map((p) => p.year))
+    : earliestBirth;
+  const earliest = Math.min(earliestBirth, earliestPin);
+  const span =
+    timelinePeople.length || timelinePins.length
+      ? `${Math.max(
+          0,
+          (timelinePeople.length
+            ? Math.max(...timelinePeople.map((p) => p.death_year))
+            : 2030) - earliest,
+        )} years`
+      : `${new Date().getUTCFullYear()} – present`;
 
   return (
-    <div className="space-y-6">
-      <section className="space-y-2">
-        <h1 className="text-2xl font-semibold tracking-tight">A timeline of science stories</h1>
-        <p className="text-sm opacity-70 max-w-2xl">
-          Lifespans, eras, and story-pins drawn from {total.toLocaleString()} stories. Drag to
-          pan, scroll to zoom. Click a pin for the story; click a person chip for everything
-          they appear in.
+    <main>
+      <section className="shell hero">
+        <div className="hero-eyebrow">
+          <span className="dot" />
+          <span className="smallcaps">The Lumen library · v0.2</span>
+        </div>
+        <h1 className="hero-title">
+          A library of <em>story-moments</em> from the history of science.
+        </h1>
+        <p className="hero-sub">
+          Distilled from long-form science video — the anecdotes, experiments, fun facts and
+          unguarded quotes that make a discovery memorable. {totalStories} moments and counting,
+          anchored to {totalPeople} people across {span}.
         </p>
+
+        <Timeline
+          people={timelinePeople}
+          pins={timelinePins}
+          storyCount={totalStories}
+          videoCount={totalVideos}
+        />
       </section>
 
-      <section className="rounded-lg border border-current/10 p-3">
-        <Timeline data={data} />
-      </section>
-
-      <div className="grid gap-6 lg:grid-cols-[1fr_22rem]">
-        <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Recent stories</h2>
-          {feed.length === 0 ? (
-            <div className="rounded border border-dashed border-current/20 p-6 text-sm opacity-70">
-              No stories yet — ingest some videos and run <code>/process</code> to extract.
-            </div>
-          ) : (
-            <ul className="grid gap-4 md:grid-cols-2">
-              {feed.map((s) => (
-                <li key={s.id}>
-                  <StoryCard story={s} />
-                </li>
-              ))}
-            </ul>
-          )}
+      {featuredRecords.length > 0 && (
+        <section className="shell" style={{ paddingTop: 56 }}>
+          <div className="section-title">
+            <h2>This week&apos;s reading</h2>
+            <span className="st-aux">
+              <Link href="/walk">Walk through everything →</Link>
+            </span>
+          </div>
+          <div className="featured-grid">
+            {featuredRecords.map((r) => (
+              <StoryCard
+                key={r.story.id}
+                story={r.story}
+                entities={r.entities}
+                variant="featured"
+              />
+            ))}
+          </div>
         </section>
+      )}
 
-        <aside className="space-y-4">
-          <h2 className="text-lg font-semibold">Search</h2>
-          <SearchBar />
-        </aside>
-      </div>
-    </div>
+      <HomeBody records={records} videos={videoList} />
+    </main>
   );
 }
