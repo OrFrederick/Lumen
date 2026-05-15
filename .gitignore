@@ -29,6 +29,9 @@ out/
 .DS_Store
 Thumbs.db
 
+# Claude Code worktrees (isolated agent workspaces)
+.claude/worktrees/
+
 # Editors
 .vscode/
 .idea/

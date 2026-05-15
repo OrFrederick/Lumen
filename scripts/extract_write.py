@@ -32,10 +32,13 @@ from typing import Any
 
 import jsonschema
 
-from scripts.lib.db import connect, transaction
-from scripts.lib.paths import DB_PATH, EXTRACTED_DIR, extracted_path
-from scripts.lib.schema import iter_extraction_errors, validate_extraction
-from scripts.lib.validate import resolve_or_create_entity, seconds_from_ts
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.db import connect, transaction  # noqa: E402
+from scripts.lib.paths import DB_PATH, EXTRACTED_DIR, extracted_path  # noqa: E402
+from scripts.lib.schema import iter_extraction_errors, validate_extraction  # noqa: E402
+from scripts.lib.validate import resolve_or_create_entity, seconds_from_ts  # noqa: E402
 
 
 def _slugify(name: str) -> str:

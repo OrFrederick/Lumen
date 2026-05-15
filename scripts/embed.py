@@ -20,11 +20,15 @@ import argparse
 import sqlite3
 import sys
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
 
-from scripts.lib.db import connect, transaction
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.lib.db import connect, transaction  # noqa: E402
 
 if TYPE_CHECKING:
     from sentence_transformers import SentenceTransformer
