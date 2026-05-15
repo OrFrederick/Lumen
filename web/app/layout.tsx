@@ -1,33 +1,53 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Inter, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
 import type { ReactNode } from "react";
+import { Header } from "@/components/Header";
+import { HoverCardProvider } from "@/components/HoverCard";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import { personCount, storyCount } from "@/lib/queries";
+
+const serif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-source-serif",
+  weight: ["300", "400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+const sans = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  weight: ["400", "500"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Lumen — science video library",
+  title: "Lumen — a library of story-moments from the history of science",
   description:
-    "Interactive timeline of stories, anecdotes, and experiments distilled from science videos.",
+    "Distilled from long-form science video: the anecdotes, experiments, fun facts and unguarded quotes that make a discovery memorable.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
+  // Counts are read server-side once per request; small + cheap.
+  const stories = storyCount();
+  const people = personCount();
   return (
-    <html lang="en">
-      <body className="min-h-screen antialiased font-sans">
-        <header className="border-b border-current/10">
-          <nav className="mx-auto max-w-7xl px-4 h-12 flex items-center justify-between text-sm">
-            <Link href="/" className="font-semibold tracking-tight">
-              ✦ Lumen
-            </Link>
-            <div className="flex items-center gap-4 opacity-80">
-              <Link href="/" className="hover:underline">Timeline</Link>
-              <Link href="/walk" className="hover:underline">Walk</Link>
-            </div>
-          </nav>
-        </header>
-        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
-        <footer className="mx-auto max-w-7xl px-4 py-8 text-xs opacity-50">
-          Lumen — distilled from science videos.
-        </footer>
+    <html lang="en" suppressHydrationWarning className={`${serif.variable} ${sans.variable} ${mono.variable}`}>
+      <body>
+        <ThemeProvider>
+          <HoverCardProvider>
+            <Header storyCount={stories} personCount={people} />
+            {children}
+          </HoverCardProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
