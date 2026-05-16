@@ -49,6 +49,7 @@ export default function HomePage() {
       occupation: p.occupation,
       description: p.description,
       field: inferField(p.occupation),
+      mention_count: p.mention_count ?? 0,
     }));
 
   const timelinePins: TimelinePinInput[] = pinsRaw.map((p) => ({

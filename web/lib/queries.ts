@@ -12,7 +12,9 @@ import type {
 } from "./types";
 
 export type StoryWithVideoMeta = StoryWithVideo & { video_channel: string | null };
-export type PersonHit = Pick<Entity, "id" | "name" | "slug" | "birth_year" | "death_year" | "occupation" | "description">;
+export type PersonHit = Pick<Entity, "id" | "name" | "slug" | "birth_year" | "death_year" | "occupation" | "description"> & {
+  mention_count?: number;
+};
 
 // Read-only helpers. All gracefully degrade to empty results when the
 // database is missing or a virtual table is unavailable.
@@ -292,13 +294,18 @@ export function allVideos(): Video[] {
   );
 }
 
-/** People (entities of kind=person) for the timeline lifespans. */
+/** People (entities of kind=person) for the timeline lifespans.
+ *  Includes mention_count (joined from entity_mentions) so the timeline can
+ *  rank by prominence and hide low-signal entries when crowded. */
 export function getTimelinePeople(): PersonHit[] {
   return safeAll<PersonHit>(
-    `SELECT id, name, slug, birth_year, death_year, occupation, description
-       FROM entities
-      WHERE kind = 'person' AND birth_year IS NOT NULL AND death_year IS NOT NULL
-      ORDER BY birth_year ASC`,
+    `SELECT e.id, e.name, e.slug, e.birth_year, e.death_year, e.occupation, e.description,
+            COUNT(m.story_id) AS mention_count
+       FROM entities e
+       LEFT JOIN entity_mentions m ON m.entity_id = e.id
+      WHERE e.kind = 'person' AND e.birth_year IS NOT NULL AND e.death_year IS NOT NULL
+      GROUP BY e.id
+      ORDER BY e.birth_year ASC`,
   );
 }
 
