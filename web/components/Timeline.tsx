@@ -8,7 +8,6 @@ import {
   useRef,
   useState,
   type MouseEvent,
-  type WheelEvent,
 } from "react";
 import { useHover, type HoverEntity } from "./HoverCard";
 import {
@@ -65,23 +64,33 @@ const FIELD_COLOR: Record<Field, string> = {
 
 const MIN_SPAN = 40;
 const MAX_SPAN = 600;
-const CLAMP_MIN_YEAR = 1500;
+const HARD_MAX_YEAR = 2050;
 
-function clampZoom(from: number, to: number, maxYear: number): { from: number; to: number } {
+function clampZoom(
+  from: number,
+  to: number,
+  minYear: number,
+  maxYear: number,
+): { from: number; to: number } {
   let f = from;
   let t = to;
   const span = t - f;
-  if (span < MIN_SPAN) return { from: f, to: f + MIN_SPAN };
-  if (span > MAX_SPAN) return { from: f, to: f + MAX_SPAN };
-  if (f < CLAMP_MIN_YEAR) {
-    t += CLAMP_MIN_YEAR - f;
-    f = CLAMP_MIN_YEAR;
+  if (span < MIN_SPAN) {
+    return { from: Math.max(minYear, f), to: Math.min(maxYear, f + MIN_SPAN) };
+  }
+  if (span > MAX_SPAN) {
+    return { from: Math.max(minYear, f), to: Math.min(maxYear, f + MAX_SPAN) };
+  }
+  if (f < minYear) {
+    t += minYear - f;
+    f = minYear;
   }
   if (t > maxYear) {
     f -= t - maxYear;
     t = maxYear;
   }
-  if (f < CLAMP_MIN_YEAR) f = CLAMP_MIN_YEAR;
+  if (f < minYear) f = minYear;
+  if (t > maxYear) t = maxYear;
   return { from: f, to: t };
 }
 
@@ -92,6 +101,8 @@ export function Timeline({
   videoCount,
   initialFrom,
   initialTo,
+  filterField,
+  filterKind,
 }: {
   people: TimelinePersonInput[];
   pins: TimelinePinInput[];
@@ -99,35 +110,55 @@ export function Timeline({
   videoCount: number;
   initialFrom?: number;
   initialTo?: number;
+  filterField?: Field | null;
+  filterKind?: StoryKind | null;
 }) {
   const router = useRouter();
   const wrapRef = useRef<HTMLDivElement>(null);
   const { show, hide } = useHover();
 
-  const maxYear = useMemo(() => {
-    const ya = people.length ? Math.max(...people.map((p) => p.death_year)) : 2030;
-    const yb = pins.length ? Math.max(...pins.map((p) => p.year)) : 2030;
-    const now = new Date().getUTCFullYear();
-    return Math.max(ya, yb, now);
+  const { minYear, maxYear } = useMemo(() => {
+    const births = people.map((p) => p.birth_year);
+    const deaths = people.map((p) => p.death_year);
+    const pinYears = pins.map((p) => p.year);
+    const allLow = [...births, ...pinYears];
+    const allHigh = [...deaths, ...pinYears];
+    const dataMin = allLow.length ? Math.min(...allLow) : 1700;
+    const dataMax = allHigh.length ? Math.max(...allHigh) : 2000;
+    // Allow scrolling 20 years before the earliest entry so the first bar isn't
+    // pinned at x=0; cap the upper bound hard at 2050 regardless of data.
+    return {
+      minYear: Math.floor(dataMin - 20),
+      maxYear: Math.min(HARD_MAX_YEAR, Math.ceil(Math.max(dataMax, new Date().getUTCFullYear()) + 5)),
+    };
   }, [people, pins]);
 
   const [width, setWidth] = useState(1100);
   const [zoom, setZoom] = useState<{ from: number; to: number }>(() => {
     if (initialFrom != null && initialTo != null) return { from: initialFrom, to: initialTo };
-    const earliest = people.length
-      ? Math.min(...people.map((p) => p.birth_year))
-      : 1700;
-    return clampZoom(Math.max(CLAMP_MIN_YEAR, earliest - 20), maxYear + 10, maxYear);
+    const now = new Date().getUTCFullYear();
+    return clampZoom(now - 200, now + 5, minYear, maxYear);
   });
   const [hoveredPinId, setHoveredPinId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!wrapRef.current) return;
+    let rafId: number | null = null;
+    let pending: number | null = null;
     const ro = new ResizeObserver((entries) => {
-      for (const entry of entries) setWidth(Math.max(640, entry.contentRect.width));
+      for (const entry of entries) pending = entry.contentRect.width;
+      if (rafId != null) return;
+      rafId = requestAnimationFrame(() => {
+        if (pending != null) setWidth(Math.max(640, pending));
+        rafId = null;
+        pending = null;
+      });
     });
     ro.observe(wrapRef.current);
-    return () => ro.disconnect();
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      ro.disconnect();
+    };
   }, []);
 
   const M = { l: 24, r: 24, t: 14, b: 36 };
@@ -148,13 +179,17 @@ export function Timeline({
     () =>
       people
         .filter((p) => p.death_year >= zoom.from && p.birth_year <= zoom.to)
+        .filter((p) => !filterField || p.field === filterField)
         .sort((a, b) => a.birth_year - b.birth_year),
-    [people, zoom],
+    [people, zoom, filterField],
   );
 
   const pinsFiltered = useMemo(
-    () => pins.filter((p) => p.year >= zoom.from && p.year <= zoom.to),
-    [pins, zoom],
+    () =>
+      pins
+        .filter((p) => p.year >= zoom.from && p.year <= zoom.to)
+        .filter((p) => !filterKind || p.kind === filterKind),
+    [pins, zoom, filterKind],
   );
 
   const ticks = useMemo(() => {
@@ -236,8 +271,31 @@ export function Timeline({
     return out;
   }, [pinsFiltered, xScale]);
 
-  // Pan & zoom
+  // Pan & zoom. Coalesce state updates through requestAnimationFrame so we
+  // re-render at most once per frame, keeping the ridge + lifespan packing
+  // cheap even on a fast scroll wheel.
   const dragRef = useRef<{ x: number; from: number; to: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<{ from: number; to: number } | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  const scheduleZoom = useCallback((next: { from: number; to: number }) => {
+    pendingRef.current = next;
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      if (pendingRef.current) setZoom(pendingRef.current);
+      pendingRef.current = null;
+    });
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
+
   const onMouseDown = (e: MouseEvent<SVGSVGElement>) => {
     dragRef.current = { x: e.clientX, from: zoom.from, to: zoom.to };
   };
@@ -245,8 +303,10 @@ export function Timeline({
     if (!dragRef.current) return;
     const dx = e.clientX - dragRef.current.x;
     const span = dragRef.current.to - dragRef.current.from;
-    const dy = -dx / innerW * span;
-    setZoom(clampZoom(dragRef.current.from + dy, dragRef.current.to + dy, maxYear));
+    const dy = (-dx / innerW) * span;
+    scheduleZoom(
+      clampZoom(dragRef.current.from + dy, dragRef.current.to + dy, minYear, maxYear),
+    );
   };
   useEffect(() => {
     const up = () => {
@@ -256,26 +316,51 @@ export function Timeline({
     return () => window.removeEventListener("mouseup", up);
   }, []);
 
-  const onWheel = (e: WheelEvent<SVGSVGElement>) => {
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const center = yearOfX(mx);
-    const factor = Math.exp(e.deltaY * 0.0015);
-    const newSpan = (zoom.to - zoom.from) * factor;
-    if (newSpan < MIN_SPAN || newSpan > MAX_SPAN) return;
-    const t = (center - zoom.from) / (zoom.to - zoom.from);
-    let from = center - t * newSpan;
-    let to = center + (1 - t) * newSpan;
-    setZoom(clampZoom(from, to, maxYear));
-  };
+  // Wheel must call preventDefault, but React 17+ attaches wheel listeners as
+  // passive — so we wire it manually with passive:false. Coalesced through
+  // requestAnimationFrame for smooth scroll.
+  useEffect(() => {
+    const node = svgRef.current;
+    if (!node) return;
+    const handler = (ev: globalThis.WheelEvent) => {
+      const rect = node.getBoundingClientRect();
+      const mx = ev.clientX - rect.left;
+      const current = pendingRef.current ?? zoom;
+      const factor = Math.exp(ev.deltaY * 0.0015);
+      const newSpan = (current.to - current.from) * factor;
+      // If proposed span is outside [MIN_SPAN, MAX_SPAN], do nothing — and
+      // don't preventDefault, so the page can scroll naturally instead of
+      // feeling frozen at the zoom boundary.
+      if (newSpan < MIN_SPAN || newSpan > MAX_SPAN) return;
+      const yearAtCursor = current.from + ((mx - M.l) / innerW) * (current.to - current.from);
+      const t = (yearAtCursor - current.from) / (current.to - current.from);
+      const proposed = clampZoom(
+        yearAtCursor - t * newSpan,
+        yearAtCursor + (1 - t) * newSpan,
+        minYear,
+        maxYear,
+      );
+      // If the clamp pinned us to where we already are, this wheel event is a
+      // no-op — release the page scroll.
+      if (
+        Math.abs(proposed.from - current.from) < 0.5 &&
+        Math.abs(proposed.to - current.to) < 0.5
+      ) {
+        return;
+      }
+      ev.preventDefault();
+      scheduleZoom(proposed);
+    };
+    node.addEventListener("wheel", handler, { passive: false });
+    return () => node.removeEventListener("wheel", handler);
+  }, [zoom, innerW, minYear, maxYear, M.l, scheduleZoom]);
 
   const activePreset = PRESETS.find(
     (p) => Math.abs(p.range[0] - zoom.from) < 2 && Math.abs(p.range[1] - zoom.to) < 2,
   );
 
   const goPreset = (preset: Preset) => {
-    setZoom(clampZoom(preset.range[0], preset.range[1], maxYear));
+    setZoom(clampZoom(preset.range[0], preset.range[1], minYear, maxYear));
   };
 
   return (
@@ -305,12 +390,12 @@ export function Timeline({
         </div>
       </div>
       <svg
+        ref={svgRef}
         className="timeline-svg"
         viewBox={`0 0 ${W} ${H}`}
         preserveAspectRatio="none"
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onWheel={onWheel}
       >
         <g className="timeline-ridge">
           <path d={ridgePath} />
