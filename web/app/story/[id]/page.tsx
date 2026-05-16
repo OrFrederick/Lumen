@@ -61,66 +61,63 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
   const watchUrl = youtubeMomentUrl(story.video_id, story.ts_start);
 
   return (
-    <main className="shell story-page">
-      <div className="sp-eyebrow">
-        <Link href="/">← Library</Link>
-        <KindBadge kind={story.kind} />
-        {story.historical_year != null && (
-          <span style={{ fontSize: 13, color: "var(--ink-mute)", fontFamily: "var(--mono)" }}>
-            {story.historical_year}
-          </span>
-        )}
-      </div>
-
-      <h1>{story.title ?? "Untitled"}</h1>
-
-      {story.takeaway && story.takeaway.length > 0 && (
-        <p className="sp-takeaway">{story.takeaway}</p>
-      )}
-
-      {story.body && story.body.length > 0 && (
-        <div className="sp-body">
-          <p>
-            <Body text={story.body} entities={entityViews} />
-          </p>
-        </div>
-      )}
-
-      <div style={{ maxWidth: 720, margin: "36px 0" }}>
-        <YouTubeEmbed
-          videoId={story.video_id}
-          startSec={story.ts_start}
-          title={story.title}
-        />
-      </div>
-
-      <div className="sp-meta">
-        <a className="sp-watch" href={watchUrl} target="_blank" rel="noopener noreferrer">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M5 3l14 9-14 9V3z" />
-          </svg>
-          Watch this moment
-        </a>
-        {video && (
-          <>
-            <span>
-              From{" "}
-              <Link href={`/video/${video.id}`} style={{ color: "var(--ink)" }}>
-                <em>{video.title ?? "Untitled video"}</em>
-              </Link>
-            </span>
-            {video.channel && (
-              <>
-                <span>·</span>
-                <span>
-                  {video.channel}
-                  {video.duration_sec ? ` · ${formatDuration(video.duration_sec)}` : ""}
-                </span>
-              </>
+    <main className="story-page">
+      <div className="sp-grid">
+        <aside className="sp-aside" style={{ gridColumn: 2, gridRow: 1 }}>
+          <YouTubeEmbed
+            videoId={story.video_id}
+            startSec={story.ts_start}
+            title={story.title}
+          />
+          <div className="sp-aside-meta">
+            <a className="sp-watch" href={watchUrl} target="_blank" rel="noopener noreferrer">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M5 3l14 9-14 9V3z" />
+              </svg>
+              Watch this moment
+            </a>
+            {video && (
+              <div>
+                From{" "}
+                <Link href={`/video/${video.id}`} style={{ color: "var(--ink)" }}>
+                  <em>{video.title ?? "Untitled video"}</em>
+                </Link>
+                {video.channel && (
+                  <>
+                    {" · "}
+                    {video.channel}
+                    {video.duration_sec ? ` · ${formatDuration(video.duration_sec)}` : ""}
+                  </>
+                )}
+              </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </aside>
+
+        <div className="sp-article" style={{ gridColumn: 1, gridRow: 1 }}>
+          <div className="sp-eyebrow">
+            <Link href="/">← Library</Link>
+            <KindBadge kind={story.kind} />
+            {story.historical_year != null && (
+              <span style={{ fontSize: 13, color: "var(--ink-mute)", fontFamily: "var(--mono)" }}>
+                {story.historical_year}
+              </span>
+            )}
+          </div>
+
+          <h1>{story.title ?? "Untitled"}</h1>
+
+          {story.takeaway && story.takeaway.length > 0 && (
+            <p className="sp-takeaway">{story.takeaway}</p>
+          )}
+
+          {story.body && story.body.length > 0 && (
+            <div className="sp-body">
+              <p>
+                <Body text={story.body} entities={entityViews} />
+              </p>
+            </div>
+          )}
 
       {entityViews.length > 0 && (
         <div className="sp-entities-block">
@@ -220,6 +217,8 @@ export default async function StoryPage({ params }: { params: Promise<{ id: stri
           ))}
         </div>
       )}
+        </div>
+      </div>
     </main>
   );
 }
