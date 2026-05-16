@@ -29,6 +29,7 @@ export interface TimelinePersonInput {
   occupation: string | null;
   description: string | null;
   field: Field;
+  mention_count?: number;
 }
 
 export interface TimelinePinInput {
@@ -202,12 +203,28 @@ export function Timeline({
   }, [zoom]);
 
   const lifespanArea = { top: H * 0.36, bottom: H - M.b };
-  const lifespanH = lifespanArea.bottom - lifespanArea.top;
+  // Reserve a thin strip at the bottom for the "dust" of low-prominence
+  // lifespans that didn't make the row cap. Sized so a few rows of 1px ticks
+  // fit without crowding the labeled bars above.
+  const DUST_STRIP_H = 14;
+  const lifespanH = lifespanArea.bottom - lifespanArea.top - DUST_STRIP_H;
+  // Target ~18px per labeled row so names stay readable.
+  const ROW_MIN_H = 18;
+  const maxRows = Math.max(4, Math.floor(lifespanH / ROW_MIN_H));
 
-  // Greedy row-packing of lifespan bars.
-  const packed = useMemo(() => {
+  // Importance-aware packing: try to place each person on a row, ordered by
+  // mention_count desc so notable people always claim a slot. People that
+  // would force a new row beyond maxRows fall into a secondary "dust" pool.
+  const { packed, dust } = useMemo(() => {
+    const byImportance = [...peopleFiltered].sort((a, b) => {
+      const am = a.mention_count ?? 0;
+      const bm = b.mention_count ?? 0;
+      if (bm !== am) return bm - am;
+      return a.birth_year - b.birth_year;
+    });
     const rows: { person: TimelinePersonInput; x0: number; x1: number }[][] = [];
-    for (const p of peopleFiltered) {
+    const secondary: { person: TimelinePersonInput; x0: number; x1: number }[] = [];
+    for (const p of byImportance) {
       const x0 = xScale(p.birth_year);
       const x1 = xScale(p.death_year);
       let placed = false;
@@ -219,13 +236,22 @@ export function Timeline({
           break;
         }
       }
-      if (!placed) rows.push([{ person: p, x0, x1 }]);
+      if (!placed) {
+        if (rows.length < maxRows) {
+          rows.push([{ person: p, x0, x1 }]);
+          placed = true;
+        }
+      }
+      if (!placed) secondary.push({ person: p, x0, x1 });
     }
-    return rows;
-  }, [peopleFiltered, xScale]);
+    // Re-sort each row left-to-right so chronological reading still works.
+    for (const row of rows) row.sort((a, b) => a.x0 - b.x0);
+    return { packed: rows, dust: secondary };
+  }, [peopleFiltered, xScale, maxRows]);
 
   const rowH = lifespanH / Math.max(packed.length, 1);
   const barH = Math.min(rowH - 4, 16);
+  const dustTop = lifespanArea.bottom - DUST_STRIP_H + 2;
 
   const pinArea = { top: M.t, bottom: lifespanArea.top - 10 };
 
@@ -529,6 +555,54 @@ export function Timeline({
               </g>
             );
           }),
+        )}
+
+        {dust.length > 0 && (
+          <g className="timeline-dust">
+            {dust.map(({ person, x0, x1 }) => {
+              const fc = FIELD_COLOR[person.field];
+              const w = Math.max(1, x1 - x0);
+              return (
+                <line
+                  key={`dust-${person.slug}`}
+                  x1={x0}
+                  x2={x0 + w}
+                  y1={dustTop + 4}
+                  y2={dustTop + 4}
+                  stroke={fc}
+                  strokeWidth={1}
+                  opacity={0.32}
+                  onMouseEnter={(e) =>
+                    show(
+                      {
+                        kind: "person",
+                        name: person.name,
+                        description: person.description,
+                        birth_year: person.birth_year,
+                        death_year: person.death_year,
+                        occupation: person.occupation,
+                        slug: person.slug,
+                      },
+                      e.clientX,
+                      e.clientY,
+                    )
+                  }
+                  onMouseLeave={hide}
+                  onClick={() => router.push(`/person/${person.slug}`)}
+                  style={{ cursor: "pointer" }}
+                />
+              );
+            })}
+            <text
+              x={M.l}
+              y={dustTop}
+              fontFamily="var(--mono)"
+              fontSize={10}
+              fill="var(--ink-mute)"
+            >
+              + {dust.length} more · zoom in to read
+            </text>
+          </g>
         )}
       </svg>
       <div
