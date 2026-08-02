@@ -4,8 +4,7 @@
 
 Lumen ingests science channels, extracts the people, discoveries, and ideas mentioned in each video with an LLM pipeline, links them against Wikipedia / Wikidata / OpenAlex, and serves the result as an interactive web app — a zoomable timeline of scientific stories you can walk through entity by entity.
 
-![Timeline view](timeline-1.png)
-![Story cards](timeline-2.png)
+![Timeline view](timeline-2.png)
 
 ## How it works
 
