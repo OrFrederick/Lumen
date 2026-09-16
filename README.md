@@ -35,7 +35,7 @@ Everything lands in a single SQLite file — no services to run, the whole libra
 - **Pipeline** — Python 3.12, uv, pydantic + jsonschema validation, sqlite-vec, sentence-transformers
 - **Extraction** — Claude subagents orchestrated through Claude Code slash commands (`.claude/commands/`)
 - **Web** — Next.js 15, React 19, TypeScript, Tailwind, D3 (zoom/scale), better-sqlite3
-- **Quality** — mypy `strict`, ruff, pytest
+- **Quality** — mypy `strict`, ruff
 
 ## Quickstart
 
